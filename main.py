@@ -2,6 +2,22 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 from torchvision import transforms
+import torch.nn as nn
+
+
+class RecurrentModel(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(RecurrentModel, self).__init__()
+        self.s = nn.Parameter(torch.FloatTensor([1e-5, 1, 1]), requires_grad=True)
+        self.w = nn.Parameter(torch.FloatTensor(2, 2).uniform_(-1e-5, 1e-5), requires_grad=True)
+        self.p = nn.Parameter(torch.FloatTensor(2).uniform_(-1e-5, 1e-5), requires_grad=True)
+        self.linear = nn.Linear(input_size, output_size)
+
+    def forward(self, x):
+        h = 0.1
+        Wc = recurrent_W(3, self.s, self.w, self.p, h)
+        y = x.mm(Wc).sum(1)
+        return y
 
 x = torch.randn(10, requires_grad=True)
 y = x * 2
@@ -57,6 +73,7 @@ optimizer = torch.optim.Adam([s, w, p], lr=1e-3)
 data_x_t = torch.FloatTensor(100, 3).uniform_()
 data_y_t = data_x_t.mm(torch.FloatTensor([[1, 2, 3]]).t_()).view(-1)
 
+
 alpha = -1e-3
 
 train_size = int(0.8 * len(data_x_t))
@@ -84,6 +101,10 @@ for i in range(len(train_x_t)):
 train_x_t = torch.stack(train_x_augmented)
 train_y_t = torch.tensor(train_y_augmented)
 
+patience = 10
+best_loss = float('inf')
+epochs_without_improvement = 0
+
 
 for i in range(100):
     data_x, data_y = Variable(data_x_t), Variable(data_y_t)
@@ -105,6 +126,16 @@ for i in range(100):
 
     print(loss.data.item())
 
+    if loss.data.item() < best_loss:
+        best_loss = loss.data.item()
+        epochs_without_improvement = 0
+    else:
+        epochs_without_improvement += 1
+
+    if epochs_without_improvement >= patience:
+        print(f"Early stop on the era: {i}")
+        break
+
     loss.backward()
     s.data.add_(s.grad.data.mul(alpha))
     s.grad.data.zero_()
@@ -120,4 +151,4 @@ for i in range(100):
     y_pred = test_x.mm(Wc).sum(1)
     test_loss = test_y.sub(y_pred).pow(2).mean()
 
-    print("Test loss:", test_loss.data.item())
+    print("Test loss:", test_loss.data.item(), i)
